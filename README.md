@@ -1,6 +1,6 @@
 Last Catch 🐟
 
-No catch goes to waste. A freshness tool that helps small-scale fishers sell their catch before it spoils, and send what can't be eaten to by-product uses instead of the dump.
+Our mission is that no catch goes to waste. A freshness tool that helps small-scale fishers sell their catch before it spoils and send what can't be eaten to by-product uses instead of the dump.
 
 The problem
 
@@ -8,7 +8,7 @@ Many small-scale fishers in rural areas have no ice or cold storage. Catch that 
 
 What it does
 A seller enters the fish type, weight, whether it's on ice, hours since caught, and a short description (max 100 characters), such as "gutted on the boat, kept in cooler, hot day, few bruised."
-Model 1 reads the description and gives it a score from 0 to 10.
+Model 1 reads the description and gives it a score from 0 to 10 and passes through other features such as type, weight, and whether or not the catch was stored on ice.
 Model 2 uses machine learning to predict how fast that specific catch will spoil.
 The seller sees a freshness score out of 100, a color (green → yellow → orange → red → grey), and how many hours it stays food-safe.
 Posted catches are tracked live from the time they were caught. Their scores drop in real time, and they're saved in the browser.
