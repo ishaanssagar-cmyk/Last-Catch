@@ -1,11 +1,11 @@
 /* =========================================================
-   Last Catch — MODEL 1
-   Reads the seller's input into global variables, then scores
+   Last Catch — MODEL 1 /*(JAVASCRIPT JS)
+   Firstly, we would read the seller's input into global variables, then score
    the description from 0 to 10:
      0  = something very bad was said (catch should go grey)
      5  = neutral / nothing important mentioned
      10 = only good things were said (improves the score)
-   No API key and no internet needed.
+     This is for the description section of the prompt
    ========================================================= */
 
 // ---------- Global variables (the seller's input) ----------
@@ -65,11 +65,11 @@ function setInput(type, weight, iced, desc) {
 
 
 // ---------- Step 2: helpers ----------
-// Finds a whole word or phrase, allowing endings like s / d / es / ed ("bruise" matches "bruised")
+// Finds a whole word or phrase, allowing endings like s / d / es/ed ("bruise" matches "bruised")
 function findPhrase(text, phrase) {
   const pattern = new RegExp("\\b" + phrase + "(s|d|es|ed)?\\b");
   const match = text.match(pattern);
-  return match ? match.index : -1;          // position in the text, or -1 if not found
+  return match? match.index: -1;          // position in the text, or -1 if not found
 }
 
 // Checks if a negation word comes right before the phrase ("no damage", "not soft")
