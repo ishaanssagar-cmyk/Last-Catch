@@ -4,7 +4,7 @@ No catch goes to waste. A freshness tool that helps small-scale fishers sell the
 
 The problem
 
-Many small-scale fishers in rural South Africa have no ice or cold storage. Catch that doesn't sell within hours spoils and gets thrown away, which wastes food and fishers' income. Fishers and buyers rarely have a clear way to know how long a catch will stay safe to sell.
+Many small-scale fishers in rural areas have no ice or cold storage. Catch that doesn't sell within hours spoils and gets thrown away, which wastes food and fishers' income. Fishers and buyers rarely have a clear way to know how long a catch will stay safe to sell.
 
 What it does
 A seller enters the fish type, weight, whether it's on ice, hours since caught, and a short description (max 100 characters), such as "gutted on the boat, kept in cooler, hot day, few bruised."
@@ -23,7 +23,7 @@ Danger signs set it to 0 and force grey (sewage outfall, red tide, rotten, chemi
 Handles negation, so "no damage" isn't counted as damage and "no sewage nearby" doesn't trigger danger.
 Runs in the browser with no API key and no internet.
 Model 2: machine learning spoilage model (model2/)
-Fish catalog: 116 commonly caught species, with a focus on South Africa, grouped into 9 spoilage groups (lean white fish, oily fish, tuna/mackerel family, sharks and rays, freshwater, crustaceans, bivalves, squid/octopus, abalone/whelks), plus a fat level for each fish.
+Fish catalog: 116 commonly caught species, with a focus on rural areas, grouped into 9 spoilage groups (lean white fish, oily fish, tuna/mackerel family, sharks and rays, freshwater, crustaceans, bivalves, squid/octopus, abalone/whelks), plus a fat level for each fish.
 b (starting score) comes from Model 1: b = 75 + 2.5 × description score (0 if a danger sign was found).
 m (spoilage rate) is predicted by a scikit-learn linear regression from fish group, fat level, ice, description score and weight.
 Freshness over time: score(x) = b · e^(−m·x), where x is hours since caught. Spoilage speeds up as bacteria multiply, so the score follows a curve. In log form it is a straight line: ln(score) = ln(b) − m·x.
