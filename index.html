@@ -1,139 +1,215 @@
-/* =========================================================
-   Last Catch — LOCATION
-   Everything location-related:
-   1. Asks the user for their location (GPS, with permission)
-   2. Falls back to a default fishing town if location is blocked
-   3. Calculates distance between two points (km)
-   4. Draws a map with every catch as a colored freshness dot
-   5. Lists nearby catches, spoiling soonest first
-   Needs: Leaflet (loaded in index.html) and model2/model2.js (liveStatus, formatHours)
-   ========================================================= */
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Last Catch</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; background: #07131c; color: #e6f2f8; }
+  main { max-width: 560px; margin: 40px auto; padding: 0 20px 40px; }
+  h1 span { color: #2ec4b6; }
+  h2 { font-size: 18px; margin: 28px 0 4px; }
+  .card { background: #0f2230; border: 1px solid #1f3a4d; border-radius: 14px; padding: 20px; margin-top: 16px; }
+  label { display: block; font-size: 14px; color: #8fb0c2; margin: 12px 0 4px; }
+  input, select, textarea { width: 100%; box-sizing: border-box; background: #0a1a25; color: #e6f2f8;
+    border: 1px solid #1f3a4d; border-radius: 8px; padding: 10px; font: inherit; }
+  input[type=range] { padding: 0; border: 0; background: transparent; accent-color: #2ec4b6; }
+  button { margin-top: 16px; background: #2ec4b6; color: #04211e; border: 0; border-radius: 10px;
+    padding: 12px 18px; font-weight: 700; cursor: pointer; }
+  button.ghost { background: transparent; color: #8fb0c2; border: 1px solid #1f3a4d; font-weight: 500; }
+  button.small { margin-top: 0; padding: 6px 10px; font-size: 12px; }
+  .score { font-size: 44px; font-weight: 800; }
+  .count, .muted { font-size: 12px; color: #8fb0c2; }
+  .count { text-align: right; }
+  .catch { display: flex; gap: 14px; align-items: center; }
+  .dot { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; }
+  .grow { flex: 1; }
+  .bar { height: 6px; background: #0a1a25; border-radius: 99px; overflow: hidden; margin-top: 6px; }
+  .bar div { height: 100%; transition: width .4s; }
+  #map { height: 380px; border-radius: 12px; margin-top: 10px; }
+  .nearby { padding: 8px 0; border-bottom: 1px solid #1f3a4d; font-size: 14px; }
+  .nearby .dot { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; margin-right: 10px; font-size: 12px; color: #8fb0c2; }
+  .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Last<span>Catch</span> 🐟</h1>
+  <p>Post your catch and get a live freshness score.</p>
 
-// ---------- Global variables ----------
-const DEFAULT_LOCATION = { lat: -34.80, lng: 20.05, name: "Struisbaai, Western Cape" };
-let userLat = DEFAULT_LOCATION.lat;
-let userLng = DEFAULT_LOCATION.lng;
-let locationSource = "default";      // "gps" if the user shared location, otherwise "default"
-let map = null;
-let mapLayer = null;                 // holds the dots so they can be redrawn
+  <div class="card">
+    <label>Type of fish</label>
+    <input id="type" list="fishList" value="Snoek" placeholder="Start typing, e.g. Snoek">
+    <datalist id="fishList"></datalist>
 
-// ---------- 1 + 2. Get the user's location ----------
-function getLocation() {
-  return new Promise(resolve => {
-    if (!navigator.geolocation) return resolve(useDefault("this browser doesn't support location"));
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        userLat = pos.coords.latitude;
-        userLng = pos.coords.longitude;
-        locationSource = "gps";
-        resolve({ lat: userLat, lng: userLng, source: "gps" });
-      },
-      err => resolve(useDefault(err.code === 1 ? "location permission was denied" : "location unavailable")),
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 5 * 60 * 1000 }
-    );
-  });
-}
+    <label>Weight (kg)</label>
+    <input id="weight" type="number" step="0.1" value="20">
 
-function useDefault(reason) {
-  userLat = DEFAULT_LOCATION.lat;
-  userLng = DEFAULT_LOCATION.lng;
-  locationSource = "default";
-  return { lat: userLat, lng: userLng, source: "default", reason };
-}
+    <label>Stored in ice?</label>
+    <select id="iced"><option value="yes">Yes</option><option value="no">No</option></select>
 
-function locationLabel() {
-  return locationSource === "gps"
-    ? "📍 Using your location"
-    : `📍 Using demo location: ${DEFAULT_LOCATION.name} (share your location to see catches near you)`;
-}
+    <label>Hours since caught</label>
+    <input id="hours" type="number" step="0.5" min="0" value="2">
 
-// ---------- 3. Distance between two points (Haversine formula) ----------
-function distanceKm(lat1, lng1, lat2, lng2) {
-  const R = 6371;                                   // Earth radius in km
-  const toRad = d => d * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
+    <label>Description (max 100 characters)</label>
+    <textarea id="desc" maxlength="100">gutted on the boat, kept in cooler, hot day, few bruised</textarea>
+    <div class="count"><span id="chars">0</span>/100</div>
 
-const esc = t => String(t).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+    <button id="go">Score my catch</button>
+  </div>
 
-// ---------- Demo sellers so the map is never empty ----------
-// Placed around the user's location. b and m come from running the real models on sample catches.
-function makeDemoCatches() {
-  const now = Date.now(), HOUR = 3600 * 1000;
-  const samples = [
-    { who: "Sipho M.",  fish: "Snoek",      kg: 30, iced: "no",  hoursAgo: 4,  desc: "gutted, cooler box, hot day",          dLat:  0.03, dLng:  0.05 },
-    { who: "Anna V.",   fish: "Kob",        kg: 18, iced: "yes", hoursAgo: 10, desc: "bled and gutted, firm",                dLat: -0.06, dLng: -0.02 },
-    { who: "Johan P.",  fish: "Harders",    kg: 45, iced: "no",  hoursAgo: 9,  desc: "kept in the shade, warm",              dLat:  0.10, dLng:  0.12 },
-    { who: "Thandi N.", fish: "Yellowtail", kg: 22, iced: "yes", hoursAgo: 2,  desc: "ice slurry, just caught offshore",     dLat: -0.12, dLng:  0.15 },
-    { who: "Lindiwe Z.",fish: "Crayfish",   kg: 8,  iced: "no",  hoursAgo: 5,  desc: "cooler box, overcast",                 dLat:  0.04, dLng: -0.09 },
-    { who: "Nomsa D.",  fish: "Mussel",     kg: 12, iced: "no",  hoursAgo: 1,  desc: "picked this morning",                  dLat: -0.02, dLng:  0.07 },
-  ];
-  return samples.map((s, i) => {
-    runModel1(s.fish, s.kg, s.iced, s.desc);          // real Model 1
-    const r2 = runModel2(s.hoursAgo);                 // real Model 2
-    return {
-      id: -(i + 1), demo: true, seller: s.who, fishType: s.fish, weightKg: s.kg, storedInIce: s.iced === "yes",
-      b: r2.b, m: r2.m, caughtAt: now - s.hoursAgo * HOUR,
-      lat: userLat + s.dLat, lng: userLng + s.dLng,
-    };
-  });
-}
+  <div class="card" id="result" style="display:none"></div>
 
-// ---------- 4. The map ----------
-function initMap(elementId) {
-  if (typeof L === "undefined") {                     // Leaflet failed to load (offline)
-    document.getElementById(elementId).innerHTML = "<p style='padding:16px'>Map unavailable (no internet connection).</p>";
-    return null;
+  <h2>My posted catches</h2>
+  <div class="muted">Scores update live from the time each fish was caught. Saved on this device.</div>
+  <div class="card">
+    <label>⏩ Demo fast-forward: <b id="ffLabel">+0 h</b></label>
+    <input id="ff" type="range" min="0" max="48" step="1" value="0">
+    <div class="muted">Moves time forward to show catches losing freshness. Doesn't change saved data.</div>
+  </div>
+  <div id="myCatches"></div>
+
+  <h2>Nearby catches (buyer map)</h2>
+  <div class="muted" id="locStatus">📍 Finding your location…</div>
+  <div class="card">
+    <div class="legend">
+      <span><i style="background:#2ecc71"></i>Freshest</span><span><i style="background:#f1c40f"></i>Good</span>
+      <span><i style="background:#e67e22"></i>Sell soon</span><span><i style="background:#e74c3c"></i>Last call</span>
+      <span><i style="background:#7f8c8d"></i>By-product only</span>
+    </div>
+    <div id="map"></div>
+    <button class="ghost small" id="locBtn" style="margin-top:10px">📍 Use my location</button>
+    <h3 style="font-size:14px;color:#8fb0c2;margin:16px 0 4px">Spoiling soonest first</h3>
+    <div id="nearbyList"></div>
+  </div>
+</main>
+
+<script src="model1/model1.js"></script>
+<script src="model2/model2_data.js"></script>
+<script src="model2/model2.js"></script>
+<script src="location/location.js"></script>
+<script>
+  const STORAGE_KEY = "lastcatch_catches";
+  const UPDATE_EVERY_MS = 30 * 1000;      // refresh live scores every 30 seconds
+  let fastForwardHours = 0;
+  let pendingCatch = null;                // the scored catch, waiting to be posted
+
+  // ---------- saving & loading (browser storage, this device only) ----------
+  function loadCatches() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch (e) { return []; }
   }
-  map = L.map(elementId).setView([userLat, userLng], 10);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 18, attribution: "© OpenStreetMap contributors",
-  }).addTo(map);
-  mapLayer = L.layerGroup().addTo(map);
-  return map;
-}
+  function saveCatches(list) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch (e) { /* storage blocked: keep in memory */ }
+  }
+  let catches = loadCatches();
 
-function recenterMap() {
-  if (map) map.setView([userLat, userLng], 10);
-}
+  // ---------- form helpers ----------
+  document.getElementById("fishList").innerHTML = MODEL2_DATA.fish.map(f => `<option value="${f.name}">`).join("");
+  const desc = document.getElementById("desc");
+  const updateCount = () => document.getElementById("chars").textContent = desc.value.length;
+  desc.oninput = updateCount; updateCount();
+  const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-// Draws "you" plus every catch as a dot: color = freshness, size = weight
-function drawCatchesOnMap(allCatches, extraHours = 0) {
-  if (!map || !mapLayer) return;
-  mapLayer.clearLayers();
-  L.circleMarker([userLat, userLng], { radius: 8, color: "#fff", weight: 2, fillColor: "#3498db", fillOpacity: 1 })
-    .bindTooltip("You").addTo(mapLayer);
+  // ---------- score a new catch (Model 1 -> Model 2) ----------
+  document.getElementById("go").onclick = () => {
+    const r = runModel1(document.getElementById("type").value, document.getElementById("weight").value,
+                        document.getElementById("iced").value, desc.value);
+    const box = document.getElementById("result");
+    box.style.display = "block";
+    if (!r.ok) { box.innerHTML = `<b style="color:#e74c3c">${r.error}</b>`; pendingCatch = null; return; }
 
-  allCatches.filter(c => c.lat != null).forEach(c => {
-    const s = liveStatus(c, extraHours);
-    const km = distanceKm(userLat, userLng, c.lat, c.lng);
-    const popup = `<b>${esc(c.fishType)}</b> · ${c.weightKg} kg${c.demo ? " (demo)" : ""}<br>
-      Seller: ${esc(c.seller || "You")}<br>
-      <b style="color:${s.stage.color}">${Math.round(s.score)}/100 · ${s.stage.name}</b><br>
-      Caught ${formatHours(s.x)} ago · ${c.storedInIce ? "on ice" : "no ice"}<br>
-      ${s.hoursLeft > 0 ? `Food-safe for ${formatHours(s.hoursLeft)}` : "By-product only (compost, fertilizer, bait)"}<br>
-      ${km.toFixed(1)} km away`;
-    L.circleMarker([c.lat, c.lng], {
-      radius: 7 + Math.min(c.weightKg, 50) / 6, color: "#000", weight: 1, fillColor: s.stage.color, fillOpacity: 0.95,
-    }).bindPopup(popup).addTo(mapLayer);
-  });
-}
+    const r2 = runModel2(document.getElementById("hours").value);
+    pendingCatch = {
+      id: Date.now(), fishType: r.fishType, weightKg: r.weightKg, storedInIce: r.storedInIce,
+      description: r.description, descriptionScore: r.descriptionScore, reasons: r.reasonsFound,
+      group: r2.fishGroup, b: r2.b, m: r2.m, caughtAt: caughtAt,   // caughtAt is set by runModel2
+      lat: userLat, lng: userLng,                                   // where the catch is (from location.js)
+    };
+    renderResult();
+  };
 
-// ---------- 5. Nearby list (spoiling soonest first) ----------
-function nearbyListHtml(allCatches, extraHours = 0) {
-  const rows = allCatches.filter(c => c.lat != null).map(c => {
-    const s = liveStatus(c, extraHours);
-    return { c, s, km: distanceKm(userLat, userLng, c.lat, c.lng) };
-  }).sort((a, b) => a.s.hoursLeft - b.s.hoursLeft);
-  if (!rows.length) return "<p class='muted'>No catches nearby.</p>";
-  return rows.map(({ c, s, km }) => `
-    <div class="nearby">
-      <span class="dot" style="background:${s.stage.color}"></span>
-      <b>${esc(c.fishType)}</b> · ${c.weightKg} kg · ${km.toFixed(1)} km
-      <span class="muted"> · ${s.stage.name} · ${s.hoursLeft > 0 ? formatHours(s.hoursLeft) + " left" : "by-product only"}${c.demo ? " · demo" : ""}</span>
-    </div>`).join("");
-}
+  function renderResult() {
+    if (!pendingCatch) return;
+    const c = pendingCatch, s = liveStatus(c, fastForwardHours);
+    document.getElementById("result").innerHTML = `
+      <div>Freshness right now</div>
+      <div class="score" style="color:${s.stage.color}">${Math.round(s.score)} / 100</div>
+      <p><b>${s.stage.name}</b> · ${s.hoursLeft > 0 ? `food-safe for about ${formatHours(s.hoursLeft)}` : "not food-safe: by-product use only"}</p>
+      <p>${c.weightKg} kg of ${escapeHtml(c.fishType)} (${c.group.replace("_", " ")}) · ${c.storedInIce ? "on ice" : "no ice"} · caught ${formatHours(s.x)} ago</p>
+      <p class="muted">Model 1, description score: <b>${c.descriptionScore}/10</b> (${escapeHtml(c.reasons.join(", ")) || "nothing specific mentioned"})<br>
+      Model 2: b = ${c.b.toFixed(1)}, m = ${c.m.toFixed(4)} per hour, score(x) = b · e<sup>−m·x</sup></p>
+      <button id="post">Post this catch</button>`;
+    document.getElementById("post").onclick = postCatch;
+  }
 
-if (typeof module !== "undefined") module.exports = { distanceKm, getLocation, DEFAULT_LOCATION };
+  // ---------- post: save with the time it was caught ----------
+  function postCatch() {
+    if (!pendingCatch) return;
+    catches.unshift(pendingCatch);
+    saveCatches(catches);
+    pendingCatch = null;
+    document.getElementById("result").style.display = "none";
+    renderCatches();
+  }
+
+  window.removeCatch = id => {
+    catches = catches.filter(c => c.id !== id);
+    saveCatches(catches);
+    renderCatches();
+  };
+
+  // ---------- live list: recalculated from caughtAt every time ----------
+  let demoCatches = [];
+  function renderMap() {
+    const all = catches.concat(demoCatches);
+    drawCatchesOnMap(all, fastForwardHours);
+    document.getElementById("nearbyList").innerHTML = nearbyListHtml(all, fastForwardHours);
+  }
+
+  function renderCatches() {
+    renderMap();
+    const box = document.getElementById("myCatches");
+    if (!catches.length) { box.innerHTML = `<div class="card muted">No catches posted yet.</div>`; return; }
+    box.innerHTML = catches.map(c => {
+      const s = liveStatus(c, fastForwardHours);
+      return `<div class="card catch">
+        <div class="dot" style="background:${s.stage.color}"></div>
+        <div class="grow">
+          <b>${escapeHtml(c.fishType)}</b> · ${c.weightKg} kg · ${c.storedInIce ? "on ice" : "no ice"}<br>
+          <span style="color:${s.stage.color}"><b>${Math.round(s.score)}/100 · ${s.stage.name}</b></span>
+          <span class="muted"> · caught ${formatHours(s.x)} ago · ${s.hoursLeft > 0 ? `${formatHours(s.hoursLeft)} left as food` : "by-product only"}</span>
+          <div class="bar"><div style="width:${Math.max(0, Math.min(100, s.score))}%;background:${s.stage.color}"></div></div>
+        </div>
+        <button class="ghost small" onclick="removeCatch(${c.id})">Remove</button>
+      </div>`;
+    }).join("");
+  }
+
+  // ---------- demo fast-forward ----------
+  document.getElementById("ff").oninput = e => {
+    fastForwardHours = +e.target.value;
+    document.getElementById("ffLabel").textContent = "+" + fastForwardHours + " h";
+    renderCatches(); renderResult();
+  };
+
+  // ---------- location: find the user, build the map ----------
+  async function setupLocation() {
+    await getLocation();
+    document.getElementById("locStatus").textContent = locationLabel();
+    demoCatches = makeDemoCatches();          // demo sellers placed around the user
+    if (!map) initMap("map"); else recenterMap();
+    renderCatches();
+  }
+  document.getElementById("locBtn").onclick = setupLocation;
+  initMap("map");
+  setupLocation();
+
+  // ---------- keep everything live ----------
+  renderCatches();
+  setInterval(() => { renderCatches(); renderResult(); }, UPDATE_EVERY_MS);
+</script>
+</body>
+</html>
