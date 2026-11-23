@@ -2,8 +2,6 @@ Last Catch 🐟
 
 No catch goes to waste. A freshness tool that helps small-scale fishers sell their catch before it spoils, and send what can't be eaten to by-product uses instead of the dump.
 
-Arbiter Hacks V1, Theme Track: Rethinking Waste Live site: https://ishaanssagar-cmyk.github.io/Last-Catch/
-
 The problem
 
 Many small-scale fishers in rural South Africa have no ice or cold storage. Catch that doesn't sell within hours spoils and gets thrown away, which wastes food and fishers' income. Fishers and buyers rarely have a clear way to know how long a catch will stay safe to sell.
